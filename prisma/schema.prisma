@@ -1,0 +1,559 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum UserRole {
+  ADMIN
+  PROJECT_MANAGER
+  SUPPLIER
+  AUDITOR
+}
+
+enum ProjectType {
+  AUTHORIZED_PLAN      // Proyectos autorizados en el plan empresarial
+  RENOVATION           // Proyectos de remodelación de menor escala
+}
+
+enum ProjectStatus {
+  DRAFT                // Borrador
+  PENDING_APPROVAL     // Pendiente de autorización
+  APPROVED             // Autorizado
+  IN_PROGRESS          // En ejecución
+  ON_HOLD              // En pausa
+  COMPLETED            // Completado
+  CANCELLED            // Cancelado
+  REJECTED             // Rechazado
+}
+
+enum PhaseStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  ON_HOLD
+}
+
+enum DisbursementStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum BudgetItemType {
+  LABOR                // Mano de obra
+  MATERIALS            // Materiales
+  EQUIPMENT            // Equipos
+  SUBCONTRACTING       // Subcontratación
+  OVERHEAD             // Gastos generales
+  CONTINGENCY          // Contingencia
+  OTHER                // Otros
+}
+
+enum DeliverableStatus {
+  PENDING
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  RESUBMITTED
+}
+
+enum ScheduleItemType {
+  MILESTONE
+  TASK
+  DELIVERABLE
+}
+
+enum SupplierStatus {
+  ACTIVE
+  INACTIVE
+  PENDING_VERIFICATION
+  BLACKLISTED
+}
+
+// ============================================
+// MODELS
+// ============================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  passwordHash  String?
+  role          UserRole  @default(PROJECT_MANAGER)
+  avatarUrl     String?
+  phone         String?
+  department    String?
+  isActive      Boolean   @default(true)
+  emailVerified DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  managedProjects     Project[]       @relation("ProjectManager")
+  createdProjects     Project[]       @relation("ProjectCreator")
+  assignedPhases      ProjectPhase[]  @relation("PhaseAssignee")
+  assignedTasks       ScheduleItem[]  @relation("TaskAssignee")
+  deliverableReviews  Deliverable[]   @relation("DeliverableReviewer")
+  supplierProfile     Supplier?       @relation("SupplierUser")
+  notifications       Notification[]
+  activityLogs        ActivityLog[]
+
+  @@map("users")
+}
+
+model Supplier {
+  id              String   @id @default(cuid())
+  companyName     String
+  taxId           String   @unique
+  contactName     String
+  contactEmail    String
+  contactPhone    String
+  address         String?
+  city            String?
+  country         String   @default("España")
+  bankAccount     String?
+  status          SupplierStatus @default(PENDING_VERIFICATION)
+  specialties     String[] // Especialidades: construcción, electricidad, fontanería, etc.
+  certifications  String[] // Certificaciones ISO, etc.
+  rating          Float    @default(0)
+  notes           String?
+  userId          String?  @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  user            User?                @relation("SupplierUser", fields: [userId], references: [id])
+  projectSuppliers ProjectSupplier[]
+  invoices        Invoice[]
+  budgetItems     BudgetItem[]
+  scheduleItems   ScheduleItem[]
+
+  @@map("suppliers")
+}
+
+model Project {
+  id                  String       @id @default(cuid())
+  code                String       @unique // Código único: PRJ-2024-001
+  name                String
+  description         String?
+  type                ProjectType
+  status              ProjectStatus @default(DRAFT)
+
+  // Fechas clave
+  startDate           DateTime?
+  endDate             DateTime?
+  approvedDate        DateTime?
+  estimatedDuration   Int?         // En días
+
+  // Presupuesto
+  totalBudget         Decimal      @default(0) @db.Decimal(15, 2)
+  executedBudget      Decimal      @default(0) @db.Decimal(15, 2)
+  committedBudget     Decimal      @default(0) @db.Decimal(15, 2)
+
+  // Plan empresarial (solo para AUTHORIZED_PLAN)
+  fiscalYear          Int?         // Año fiscal de autorización
+  authorizedAmount    Decimal?     @db.Decimal(15, 2)
+  authorizationNumber String?      // Número de resolución/autorización
+  authorizationDate   DateTime?
+
+  // Remodelación (solo para RENOVATION)
+  proposalNumber      String?
+  proposalDate        DateTime?
+  proposalAmount      Decimal?     @db.Decimal(15, 2)
+
+  // Ubicación
+  location            String?
+  address             String?
+  coordinates         String?      // Lat,Lng
+
+  // Metadatos
+  managerId           String
+  creatorId           String
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  // Relations
+  manager             User         @relation("ProjectManager", fields: [managerId], references: [id])
+  creator             User         @relation("ProjectCreator", fields: [creatorId], references: [id])
+  budgetLines         BudgetLine[]
+  phases              ProjectPhase[]
+  scheduleItems       ScheduleItem[]
+  deliverables        Deliverable[]
+  projectSuppliers    ProjectSupplier[]
+  invoices            Invoice[]
+  documents           Document[]
+  activityLogs        ActivityLog[]
+
+  @@index([type])
+  @@index([status])
+  @@index([managerId])
+  @@index([fiscalYear])
+  @@map("projects")
+}
+
+model BudgetLine {
+  id            String        @id @default(cuid())
+  code          String        // Código: RUB-001, RUB-002
+  name          String
+  description   String?
+  type          BudgetItemType
+  projectId     String
+  parentId      String?       // Para sub-rubros jerárquicos
+  level         Int           @default(0) // Nivel de profundidad
+
+  // Importes
+  budgetedAmount  Decimal     @default(0) @db.Decimal(15, 2)
+  committedAmount Decimal     @default(0) @db.Decimal(15, 2)
+  executedAmount  Decimal     @default(0) @db.Decimal(15, 2)
+  pendingAmount   Decimal     @default(0) @db.Decimal(15, 2)
+
+  // Control
+  unit          String?       // ud, m2, m3, kg, etc.
+  quantity      Decimal?      @db.Decimal(10, 2)
+  unitPrice     Decimal?      @db.Decimal(10, 2)
+
+  order         Int           @default(0)
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  project       Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent        BudgetLine?   @relation("BudgetLineHierarchy", fields: [parentId], references: [id])
+  children      BudgetLine[]  @relation("BudgetLineHierarchy")
+  items         BudgetItem[]
+  suppliers     ProjectSupplier[]
+
+  @@unique([projectId, code])
+  @@index([projectId])
+  @@index([parentId])
+  @@map("budget_lines")
+}
+
+model BudgetItem {
+  id              String    @id @default(cuid())
+  budgetLineId    String
+  supplierId      String?
+  description     String
+  quantity        Decimal   @db.Decimal(10, 2)
+  unitPrice       Decimal   @db.Decimal(10, 2)
+  totalPrice      Decimal   @db.Decimal(15, 2)
+  status          String    @default("PENDING") // PENDING, APPROVED, ORDERED, RECEIVED, INVOICED
+  orderDate       DateTime?
+  deliveryDate    DateTime?
+  invoiceNumber   String?
+  invoiceDate     DateTime?
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  budgetLine      BudgetLine @relation(fields: [budgetLineId], references: [id], onDelete: Cascade)
+  supplier        Supplier?  @relation(fields: [supplierId], references: [id])
+
+  @@index([budgetLineId])
+  @@index([supplierId])
+  @@map("budget_items")
+}
+
+model ProjectPhase {
+  id              String       @id @default(cuid())
+  projectId       String
+  name            String
+  description     String?
+  order           Int          @default(0)
+  startDate       DateTime?
+  endDate         DateTime?
+  status          PhaseStatus  @default(NOT_STARTED)
+  progress        Float        @default(0) // 0-100
+
+  // Para proyectos del plan empresarial
+  authorizedAmount Decimal?    @db.Decimal(15, 2)
+  disbursedAmount  Decimal     @default(0) @db.Decimal(15, 2)
+  disbursementNumber Int?      // Número de desembolso
+
+  assigneeId      String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relations
+  project         Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee        User?        @relation("PhaseAssignee", fields: [assigneeId], references: [id])
+  scheduleItems   ScheduleItem[]
+  disbursements   Disbursement[]
+
+  @@index([projectId])
+  @@index([assigneeId])
+  @@map("project_phases")
+}
+
+model Disbursement {
+  id              String             @id @default(cuid())
+  phaseId         String
+  number          Int                // Número de desembolso en la fase
+  amount          Decimal            @db.Decimal(15, 2)
+  requestedDate   DateTime           @default(now())
+  approvedDate    DateTime?
+  paidDate        DateTime?
+  status          DisbursementStatus @default(PENDING)
+  description     String?
+  documents       String[]           // Referencias a documentos
+  approvedBy      String?
+  notes           String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  // Relations
+  phase           ProjectPhase       @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+
+  @@unique([phaseId, number])
+  @@index([phaseId])
+  @@map("disbursements")
+}
+
+model ScheduleItem {
+  id              String            @id @default(cuid())
+  projectId       String
+  phaseId         String?
+  parentId        String?           // Para WBS jerárquico
+  code            String            // Código WBS: 1.1, 1.1.1
+  name            String
+  description     String?
+  type            ScheduleItemType
+  status          String            @default("NOT_STARTED") // NOT_STARTED, IN_PROGRESS, COMPLETED, DELAYED
+
+  // Fechas planificadas
+  plannedStart    DateTime
+  plannedEnd      DateTime
+  plannedDuration Int               // En días laborables
+
+  // Fechas reales
+  actualStart     DateTime?
+  actualEnd       DateTime?
+  actualDuration  Int?
+
+  // Progreso
+  progress        Float             @default(0) // 0-100
+
+  // Dependencias
+  dependencies    String[]          // IDs de items predecesores
+
+  // Asignación
+  assigneeId      String?
+  supplierId      String?
+
+  // Recursos
+  estimatedCost   Decimal?          @db.Decimal(15, 2)
+  actualCost      Decimal?          @db.Decimal(15, 2)
+
+  // Hitos
+  isMilestone     Boolean           @default(false)
+  isCriticalPath  Boolean           @default(false)
+
+  order           Int               @default(0)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  // Relations
+  project         Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  phase           ProjectPhase?     @relation(fields: [phaseId], references: [id])
+  parent          ScheduleItem?     @relation("ScheduleHierarchy", fields: [parentId], references: [id])
+  children        ScheduleItem[]    @relation("ScheduleHierarchy")
+  assignee        User?             @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  supplier        Supplier?         @relation(fields: [supplierId], references: [id])
+  deliverables    Deliverable[]
+
+  @@unique([projectId, code])
+  @@index([projectId])
+  @@index([phaseId])
+  @@index([assigneeId])
+  @@index([parentId])
+  @@map("schedule_items")
+}
+
+model Deliverable {
+  id              String             @id @default(cuid())
+  projectId       String
+  scheduleItemId  String?
+  code            String             // Código: ENT-001, ENT-002
+  name            String
+  description     String?
+  type            String             // DOCUMENT, DRAWING, REPORT, CERTIFICATE, TEST, OTHER
+  status          DeliverableStatus  @default(PENDING)
+
+  // Fechas
+  dueDate         DateTime
+  submittedDate   DateTime?
+  reviewedDate    DateTime?
+  approvedDate    DateTime?
+
+  // Responsables
+  responsibleId   String?            // Quién debe entregarlo
+  reviewerId      String?            // Quién lo revisa
+
+  // Archivos
+  files           String[]           // URLs de archivos
+  version         Int                @default(1)
+
+  // Observaciones
+  comments        String?
+  rejectionReason String?
+
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  // Relations
+  project         Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scheduleItem    ScheduleItem?      @relation(fields: [scheduleItemId], references: [id])
+  responsible     User?              @relation("DeliverableReviewer", fields: [reviewerId], references: [id])
+
+  @@unique([projectId, code])
+  @@index([projectId])
+  @@index([scheduleItemId])
+  @@index([responsibleId])
+  @@index([reviewerId])
+  @@index([status])
+  @@map("deliverables")
+}
+
+model ProjectSupplier {
+  id              String   @id @default(cuid())
+  projectId       String
+  supplierId      String
+  budgetLineId    String?
+  role            String   // CONTRATISTA_PRINCIPAL, SUBCONTRATISTA, PROVEEDOR_MATERIALES, CONSULTOR
+  contractNumber  String?
+  contractAmount  Decimal? @db.Decimal(15, 2)
+  contractStart   DateTime?
+  contractEnd     DateTime?
+  status          String   @default("ACTIVE") // ACTIVE, COMPLETED, TERMINATED, SUSPENDED
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  project         Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  supplier        Supplier     @relation(fields: [supplierId], references: [id])
+  budgetLine      BudgetLine?  @relation(fields: [budgetLineId], references: [id])
+
+  @@unique([projectId, supplierId, budgetLineId])
+  @@index([projectId])
+  @@index([supplierId])
+  @@map("project_suppliers")
+}
+
+model Invoice {
+  id              String   @id @default(cuid())
+  projectId       String
+  supplierId      String
+  number          String
+  date            DateTime
+  amount          Decimal  @db.Decimal(15, 2)
+  taxAmount       Decimal  @default(0) @db.Decimal(15, 2)
+  totalAmount     Decimal  @db.Decimal(15, 2)
+  status          String   @default("PENDING") // PENDING, APPROVED, PAID, REJECTED, CANCELLED
+  dueDate         DateTime?
+  paidDate        DateTime?
+  description     String?
+  files           String[] // URLs de facturas escaneadas
+  approvedBy      String?
+  approvedDate    DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  supplier        Supplier @relation(fields: [supplierId], references: [id])
+
+  @@unique([supplierId, number])
+  @@index([projectId])
+  @@index([supplierId])
+  @@index([status])
+  @@map("invoices")
+}
+
+model Document {
+  id              String   @id @default(cuid())
+  projectId       String
+  name            String
+  description     String?
+  category        String   // PLANOS, ESPECIFICACIONES, CONTRATOS, PERMISOS, INFORMES, OTROS
+  fileUrl         String
+  fileSize        Int?
+  mimeType        String?
+  version         Int      @default(1)
+  uploadedBy      String
+  isPublic        Boolean  @default(false)
+  tags            String[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([category])
+  @@map("documents")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  type      String   // INFO, WARNING, ERROR, SUCCESS
+  read      Boolean  @default(false)
+  link      String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([read])
+  @@map("notifications")
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  projectId String?
+  userId    String
+  action    String   // CREATE, UPDATE, DELETE, APPROVE, REJECT, SUBMIT, etc.
+  entity    String   // PROJECT, PHASE, BUDGET_LINE, SCHEDULE_ITEM, DELIVERABLE, etc.
+  entityId  String
+  oldData   Json?
+  newData   Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  // Relations
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([userId])
+  @@index([entity])
+  @@index([createdAt])
+  @@map("activity_logs")
+}
+
+model SystemConfig {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_config")
+}
