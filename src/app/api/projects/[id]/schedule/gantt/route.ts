@@ -21,6 +21,7 @@ export async function GET(
         phase: { select: { id: true, name: true, order: true } },
         assignee: { select: { id: true, name: true, avatarUrl: true } },
         supplier: { select: { id: true, companyName: true } },
+        children: { select: { id: true } },
       },
       orderBy: { code: 'asc' },
     })

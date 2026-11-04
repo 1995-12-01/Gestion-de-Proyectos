@@ -102,6 +102,7 @@ model User {
   createdProjects     Project[]       @relation("ProjectCreator")
   assignedPhases      ProjectPhase[]  @relation("PhaseAssignee")
   assignedTasks       ScheduleItem[]  @relation("TaskAssignee")
+  deliverableResponsibilities Deliverable[] @relation("DeliverableResponsible")
   deliverableReviews  Deliverable[]   @relation("DeliverableReviewer")
   supplierProfile     Supplier?       @relation("SupplierUser")
   notifications       Notification[]
@@ -414,7 +415,8 @@ model Deliverable {
   // Relations
   project         Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
   scheduleItem    ScheduleItem?      @relation(fields: [scheduleItemId], references: [id])
-  responsible     User?              @relation("DeliverableReviewer", fields: [reviewerId], references: [id])
+  responsible     User?              @relation("DeliverableResponsible", fields: [responsibleId], references: [id])
+  reviewer        User?              @relation("DeliverableReviewer", fields: [reviewerId], references: [id])
 
   @@unique([projectId, code])
   @@index([projectId])

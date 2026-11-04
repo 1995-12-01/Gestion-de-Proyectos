@@ -1,5 +1,16 @@
 import { z } from 'zod'
 import { ProjectType, ProjectStatus, BudgetItemType, PhaseStatus, DisbursementStatus, DeliverableStatus, ScheduleItemType, SupplierStatus, UserRole } from '@prisma/client'
+import type {
+  BudgetItem as BudgetItemModel,
+  BudgetLine as BudgetLineModel,
+  Deliverable as DeliverableModel,
+  Project as ProjectModel,
+  ProjectSupplier as ProjectSupplierModel,
+  ScheduleItem as ScheduleItemModel,
+  Supplier as SupplierModel,
+} from '@prisma/client'
+
+export { DeliverableStatus, ProjectStatus, ProjectType }
 
 // ============================================
 // ESQUEMAS BASE
@@ -97,6 +108,7 @@ export const projectFilterSchema = paginationSchema.extend({
 export type ProjectCreate = z.infer<typeof projectCreateSchema>
 export type ProjectUpdate = z.infer<typeof projectUpdateSchema>
 export type ProjectFilter = z.infer<typeof projectFilterSchema>
+export type Project = ProjectModel
 
 // ============================================
 // LÍNEAS PRESUPUESTARIAS (RUBROS)
@@ -124,6 +136,10 @@ export const budgetLineUpdateSchema = budgetLineCreateSchema.partial().extend({
 
 export type BudgetLineCreate = z.infer<typeof budgetLineCreateSchema>
 export type BudgetLineUpdate = z.infer<typeof budgetLineUpdateSchema>
+export type BudgetLine = BudgetLineModel & {
+  children?: BudgetLine[]
+  items?: BudgetItem[]
+}
 
 // ============================================
 // ITEMS DE PRESUPUESTO (DETALLE)
@@ -145,6 +161,9 @@ export const budgetItemCreateSchema = z.object({
 })
 
 export type BudgetItemCreate = z.infer<typeof budgetItemCreateSchema>
+export type BudgetItem = BudgetItemModel & {
+  supplier?: SupplierModel | null
+}
 
 // ============================================
 // FASES DEL PROYECTO
@@ -228,6 +247,7 @@ export const scheduleItemUpdateSchema = scheduleItemCreateSchema.partial().exten
 
 export type ScheduleItemCreate = z.infer<typeof scheduleItemCreateSchema>
 export type ScheduleItemUpdate = z.infer<typeof scheduleItemUpdateSchema>
+export type ScheduleItem = ScheduleItemModel
 
 // ============================================
 // ENTREGABLES
@@ -264,6 +284,7 @@ export const deliverableReviewSchema = z.object({
 export type DeliverableCreate = z.infer<typeof deliverableCreateSchema>
 export type DeliverableUpdate = z.infer<typeof deliverableUpdateSchema>
 export type DeliverableReview = z.infer<typeof deliverableReviewSchema>
+export type Deliverable = DeliverableModel
 
 // ============================================
 // PROVEEDORES
@@ -292,6 +313,7 @@ export const supplierUpdateSchema = supplierCreateSchema.partial().extend({
 
 export type SupplierCreate = z.infer<typeof supplierCreateSchema>
 export type SupplierUpdate = z.infer<typeof supplierUpdateSchema>
+export type Supplier = SupplierModel
 
 // ============================================
 // PROYECTO - PROVEEDOR
@@ -310,6 +332,7 @@ export const projectSupplierCreateSchema = z.object({
 })
 
 export type ProjectSupplierCreate = z.infer<typeof projectSupplierCreateSchema>
+export type ProjectSupplier = ProjectSupplierModel
 
 // ============================================
 // FACTURAS
