@@ -14,20 +14,25 @@ export default function LoginPage() {
     setError('')
     setIsSubmitting(true)
 
-    const formData = new FormData(event.currentTarget)
-    const result = await signIn('credentials', {
-      email: formData.get('email'),
-      password: formData.get('password'),
-      redirect: false,
-    })
+    try {
+      const formData = new FormData(event.currentTarget)
+      const result = await signIn('credentials', {
+        email: formData.get('email'),
+        password: formData.get('password'),
+        redirect: false,
+      })
 
-    setIsSubmitting(false)
-    if (result?.error) {
-      setError('Correo o contraseña incorrectos.')
-      return
+      if (result?.error) {
+        setError('Correo o contraseña incorrectos.')
+        return
+      }
+
+      window.location.assign('/')
+    } catch {
+      setError('No fue posible iniciar sesión. Inténtalo de nuevo más tarde.')
+    } finally {
+      setIsSubmitting(false)
     }
-
-    window.location.assign('/')
   }
 
   return (

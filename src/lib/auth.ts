@@ -4,6 +4,7 @@ import CredentialsProvider from 'next-auth/providers/credentials'
 import { compare } from 'bcryptjs'
 import prisma from './prisma'
 import { UserRole } from '@prisma/client'
+import { authenticateWithSupabase } from './supabase-auth'
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as NextAuthOptions['adapter'],
@@ -27,8 +28,29 @@ export const authOptions: NextAuthOptions = {
           throw new Error('Email y contraseña son requeridos')
         }
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
+        const email = credentials.email.trim().toLowerCase()
+        const supabaseResult = await authenticateWithSupabase(email, credentials.password)
+
+        if (supabaseResult.status === 'authenticated') {
+          const user = await prisma.user.findFirst({
+            where: { email: { equals: supabaseResult.user.email, mode: 'insensitive' } },
+          })
+
+          if (!user || !user.isActive) {
+            throw new Error('La cuenta no tiene un perfil activo en la aplicación')
+          }
+
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            image: user.avatarUrl,
+          }
+        }
+
+        const user = await prisma.user.findFirst({
+          where: { email: { equals: email, mode: 'insensitive' } },
         })
 
         if (!user || !user.passwordHash || !user.isActive) {

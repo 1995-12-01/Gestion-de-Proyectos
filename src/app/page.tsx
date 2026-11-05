@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { getServerSession } from 'next-auth'
 import { ProjectStatus, ProjectType, UserRole } from '@prisma/client'
-import { ArrowRight, Briefcase, CircleDollarSign, FolderKanban, Plus } from 'lucide-react'
+import { ArrowRight, Briefcase, CircleDollarSign, FolderKanban, Plus, Users } from 'lucide-react'
 import { authOptions } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 
@@ -125,9 +125,20 @@ export default async function HomePage() {
               <p className="text-xs text-muted-foreground">Infraestructura</p>
             </div>
           </div>
-          <div className="text-right">
-            <p className="text-sm font-medium">{session.user.name || session.user.email}</p>
-            <p className="text-xs text-muted-foreground">{session.user.role.replaceAll('_', ' ')}</p>
+          <div className="flex items-center gap-5">
+            {session.user.role === UserRole.ADMIN && (
+              <Link
+                href="/admin/users"
+                className="inline-flex h-9 items-center gap-2 rounded-md border bg-white px-3 text-sm font-medium hover:bg-slate-50"
+              >
+                <Users className="h-4 w-4" aria-hidden="true" />
+                Usuarios
+              </Link>
+            )}
+            <div className="text-right">
+              <p className="text-sm font-medium">{session.user.name || session.user.email}</p>
+              <p className="text-xs text-muted-foreground">{session.user.role.replaceAll('_', ' ')}</p>
+            </div>
           </div>
         </div>
       </header>

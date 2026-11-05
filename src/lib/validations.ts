@@ -31,8 +31,8 @@ export type PaginationParams = z.infer<typeof paginationSchema>
 // ============================================
 
 export const userCreateSchema = z.object({
-  email: z.string().email('Email inválido'),
-  name: z.string().min(2, 'Nombre muy corto').max(100).optional(),
+  email: z.string().trim().email('Email inválido').toLowerCase(),
+  name: z.string().trim().min(2, 'Nombre muy corto').max(100).optional(),
   password: z.string().min(8, 'Mínimo 8 caracteres'),
   role: z.nativeEnum(UserRole).default(UserRole.PROJECT_MANAGER),
   phone: z.string().optional(),
