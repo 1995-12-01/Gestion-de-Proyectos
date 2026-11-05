@@ -82,6 +82,9 @@ export default function LoginPage() {
           </button>
         </form>
 
+        <Link href="/auth/forgot-password" className="mt-5 block text-center text-sm text-primary hover:underline">
+          ¿Olvidaste tu contraseña?
+        </Link>
         <Link href="/" className="mt-6 block text-center text-sm text-muted-foreground hover:text-foreground">
           Volver al inicio
         </Link>
