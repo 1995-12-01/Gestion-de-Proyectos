@@ -5,6 +5,24 @@ import { authOptions } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { userCreateSchema } from '@/lib/validations'
 
+export async function GET() {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+  }
+  if (session.user.role !== UserRole.ADMIN && session.user.role !== UserRole.PROJECT_MANAGER) {
+    return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
+  }
+
+  const users = await prisma.user.findMany({
+    where: { isActive: true, role: { in: [UserRole.ADMIN, UserRole.PROJECT_MANAGER] } },
+    select: { id: true, name: true, email: true, role: true },
+    orderBy: [{ name: 'asc' }, { email: 'asc' }],
+  })
+
+  return NextResponse.json({ users })
+}
+
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user) {
@@ -55,7 +73,7 @@ export async function POST(request: NextRequest) {
         email,
         password,
         email_confirm: true,
-        user_metadata: { name: name ?? '' },
+        user_metadata: { name: name ?? '', phone: phone ?? '' },
       }),
       cache: 'no-store',
     })

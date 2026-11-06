@@ -29,9 +29,31 @@ export async function PATCH(
     if (!canManage) {
       return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
     }
-
     const body = await request.json()
     const data = scheduleItemUpdateSchema.parse(body)
+    const plannedStart = data.plannedStart ?? scheduleItem.plannedStart
+    const plannedEnd = data.plannedEnd ?? scheduleItem.plannedEnd
+    if (plannedEnd < plannedStart) {
+      return NextResponse.json({ error: 'La fecha de fin debe ser igual o posterior al inicio.' }, { status: 400 })
+    }
+    if (data.budgetLineId) {
+      const budgetLine = await prisma.budgetLine.findFirst({
+        where: { id: data.budgetLineId, projectId: scheduleItem.projectId, parentId: { not: null } },
+        select: { id: true },
+      })
+      if (!budgetLine) {
+        return NextResponse.json({ error: 'El subrubro no pertenece a este proyecto.' }, { status: 400 })
+      }
+    }
+    if (data.assigneeId) {
+      const assignee = await prisma.user.findFirst({
+        where: { id: data.assigneeId, isActive: true },
+        select: { id: true },
+      })
+      if (!assignee) {
+        return NextResponse.json({ error: 'El responsable seleccionado no está activo.' }, { status: 400 })
+      }
+    }
 
     const updated = await prisma.scheduleItem.update({
       where: { id },

@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { budgetLineCreateSchema } from '@/lib/validations'
-import { hasPermission, canManageProject } from '@/lib/permissions'
+import { canManageProject, canViewProject } from '@/lib/permissions'
 import { UserRole } from '@prisma/client'
 
 export async function GET(
@@ -17,9 +17,18 @@ export async function GET(
     }
 
     const { id } = await params
-    const project = await prisma.project.findUnique({ where: { id } })
+    const project = await prisma.project.findUnique({
+      where: { id },
+      include: { projectSuppliers: { include: { supplier: { select: { userId: true } } } } },
+    })
     if (!project) {
       return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 })
+    }
+    const supplierUserIds = project.projectSuppliers
+      .map(item => item.supplier.userId)
+      .filter((userId): userId is string => Boolean(userId))
+    if (!canViewProject(session.user.role, session.user.id, project.managerId, project.creatorId, supplierUserIds)) {
+      return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
     }
 
     const budgetLines = await prisma.budgetLine.findMany({
@@ -37,24 +46,14 @@ export async function GET(
     })
 
     // Calcular resumen
-    const calculateSummary = (lines: any[]) => {
-      return lines.reduce((acc, line) => {
-        acc.total += Number(line.budgetedAmount)
-        acc.committed += Number(line.committedAmount)
-        acc.executed += Number(line.executedAmount)
-        acc.pending += Number(line.pendingAmount)
-        if (line.children?.length) {
-          const childSummary = calculateSummary(line.children)
-          acc.total += childSummary.total
-          acc.committed += childSummary.committed
-          acc.executed += childSummary.executed
-          acc.pending += childSummary.pending
-        }
-        return acc
-      }, { total: 0, committed: 0, executed: 0, pending: 0 })
-    }
-
-    const summary = calculateSummary(budgetLines)
+    const summary: { total: number; committed: number; executed: number; pending: number; progress: number } =
+      budgetLines.reduce((acc, line) => ({
+      total: acc.total + Number(line.budgetedAmount),
+      committed: acc.committed + Number(line.committedAmount),
+      executed: acc.executed + Number(line.executedAmount),
+      pending: acc.pending + Number(line.pendingAmount),
+      progress: 0,
+    }), { total: 0, committed: 0, executed: 0, pending: 0, progress: 0 })
     summary.progress = summary.total > 0 ? Math.round((summary.executed / summary.total) * 100) : 0
 
     return NextResponse.json({ budgetLines, summary })
@@ -81,23 +80,66 @@ export async function POST(
     }
 
     const canManage = canManageProject(session.user.role as UserRole, session.user.id, project.managerId, project.creatorId)
-    if (!canManage && !hasPermission(session.user.role as UserRole, 'BUDGET_CREATE')) {
+    if (!canManage) {
       return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
     }
 
-    const body = await request.json()
-    const data = budgetLineCreateSchema.parse({ ...body, projectId: id })
+    const body: unknown = await request.json().catch(() => null)
+    const parsed = budgetLineCreateSchema.safeParse({
+      ...(typeof body === 'object' && body !== null ? body : {}),
+      projectId: id,
+    })
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Datos inválidos', details: parsed.error.flatten().fieldErrors }, { status: 400 })
+    }
+    const data = parsed.data
 
-    // Generar código
+    const parent = data.parentId
+      ? await prisma.budgetLine.findFirst({ where: { id: data.parentId, projectId: id } })
+      : null
+    if (data.parentId && !parent) {
+      return NextResponse.json({ error: 'La línea base seleccionada no pertenece a este proyecto.' }, { status: 400 })
+    }
+    if (parent?.parentId) {
+      return NextResponse.json({ error: 'Solo se permite un nivel de subrubros bajo cada línea base.' }, { status: 400 })
+    }
+    if (parent && data.baseLineId) {
+      return NextResponse.json({ error: 'Los subrubros no pueden usar una línea base global.' }, { status: 400 })
+    }
+    if (parent) {
+      const currentChildren = await prisma.budgetLine.aggregate({
+        where: { parentId: parent.id },
+        _sum: { budgetedAmount: true },
+      })
+      if (Number(currentChildren._sum.budgetedAmount ?? 0) + data.budgetedAmount > Number(parent.budgetedAmount)) {
+        return NextResponse.json({ error: 'La suma de los subrubros no puede superar el monto de la línea base.' }, { status: 400 })
+      }
+    }
+
+    const baseLine = data.baseLineId
+      ? await prisma.budgetBaseLine.findFirst({ where: { id: data.baseLineId, isActive: true } })
+      : null
+    if (data.baseLineId && !baseLine) {
+      return NextResponse.json({ error: 'La línea base no existe o está inactiva.' }, { status: 400 })
+    }
+
     const siblingCount = await prisma.budgetLine.count({
       where: { projectId: id, parentId: data.parentId },
     })
-    const code = data.parentId
-      ? `${data.parentId}.${(siblingCount + 1).toString().padStart(2, '0')}`
+    const code = parent
+      ? `${parent.code}.${(siblingCount + 1).toString().padStart(2, '0')}`
       : `RUB-${(siblingCount + 1).toString().padStart(3, '0')}`
 
     const budgetLine = await prisma.budgetLine.create({
-      data: { ...data, code, level: data.parentId ? 1 : 0 },
+      data: {
+        ...data,
+        name: baseLine?.name ?? data.name,
+        description: baseLine?.description ?? data.description,
+        type: parent?.type ?? baseLine?.type ?? data.type,
+        baseLineId: parent ? null : baseLine?.id,
+        code,
+        level: parent ? parent.level + 1 : 0,
+      },
       include: { items: { include: { supplier: true } } },
     })
 
@@ -118,15 +160,12 @@ export async function POST(
     return NextResponse.json(budgetLine, { status: 201 })
   } catch (error) {
     console.error('Error creating budget line:', error)
-    if (error instanceof Error && error.name === 'ZodError') {
-      return NextResponse.json({ error: 'Datos inválidos', details: error }, { status: 400 })
-    }
     return NextResponse.json({ error: 'Error al crear rubro' }, { status: 500 })
   }
 }
 
 async function updateProjectBudgetTotals(projectId: string) {
-  const lines = await prisma.budgetLine.findMany({ where: { projectId } })
+  const lines = await prisma.budgetLine.findMany({ where: { projectId, parentId: null } })
   const total = lines.reduce((sum, l) => sum + Number(l.budgetedAmount), 0)
   const committed = lines.reduce((sum, l) => sum + Number(l.committedAmount), 0)
   const executed = lines.reduce((sum, l) => sum + Number(l.executedAmount), 0)

@@ -32,6 +32,7 @@ export function CreateUserForm() {
         body: JSON.stringify({
           email: formData.get('email'),
           name: formData.get('name') || undefined,
+          phone: formData.get('phone') || undefined,
           password: formData.get('password'),
           role: formData.get('role'),
         }),
@@ -61,6 +62,10 @@ export function CreateUserForm() {
       <div className="space-y-2">
         <Label htmlFor="email">Correo electrónico</Label>
         <Input id="email" name="email" type="email" autoComplete="email" required />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="phone">Teléfono para contacto / WhatsApp</Label>
+        <Input id="phone" name="phone" type="tel" autoComplete="tel" placeholder="+502 5555 5555" maxLength={30} />
       </div>
       <div className="space-y-2">
         <Label htmlFor="password">Contraseña inicial</Label>

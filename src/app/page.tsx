@@ -4,6 +4,7 @@ import { ProjectStatus, ProjectType, UserRole } from '@prisma/client'
 import { ArrowRight, Briefcase, CircleDollarSign, FolderKanban, Plus, Users } from 'lucide-react'
 import { authOptions } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { SignOutButton } from '@/components/sign-out-button'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,11 +35,8 @@ const typeLabels: Record<ProjectType, string> = {
   RENOVATION: 'Remodelación',
 }
 
-const currency = new Intl.NumberFormat('es-ES', {
-  style: 'currency',
-  currency: 'EUR',
-  maximumFractionDigits: 0,
-})
+const formatCurrency = (amount: number, currency: 'GTQ' | 'USD') =>
+  new Intl.NumberFormat('es-GT', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount)
 
 const date = new Intl.DateTimeFormat('es-ES', {
   day: 'numeric',
@@ -83,7 +81,7 @@ export default async function HomePage() {
           ],
         }
 
-  const [projectCount, activeCount, budgetTotal, projects] = await Promise.all([
+  const [projectCount, activeCount, budgetTotals, projects] = await Promise.all([
     prisma.project.count({ where: projectScope }),
     prisma.project.count({
       where: {
@@ -91,7 +89,8 @@ export default async function HomePage() {
         status: { in: [ProjectStatus.APPROVED, ProjectStatus.IN_PROGRESS] },
       },
     }),
-    prisma.project.aggregate({
+    prisma.project.groupBy({
+      by: ['currency'],
       where: projectScope,
       _sum: { totalBudget: true },
     }),
@@ -105,6 +104,7 @@ export default async function HomePage() {
         name: true,
         type: true,
         status: true,
+        currency: true,
         totalBudget: true,
         updatedAt: true,
         manager: { select: { name: true } },
@@ -125,20 +125,36 @@ export default async function HomePage() {
               <p className="text-xs text-muted-foreground">Infraestructura</p>
             </div>
           </div>
-          <div className="flex items-center gap-5">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/projects"
+              className="inline-flex h-9 items-center gap-2 rounded-md border bg-white px-3 text-sm font-medium hover:bg-slate-50"
+            >
+              <Briefcase className="h-4 w-4" aria-hidden="true" />
+              Proyectos
+            </Link>
             {session.user.role === UserRole.ADMIN && (
-              <Link
-                href="/admin/users"
-                className="inline-flex h-9 items-center gap-2 rounded-md border bg-white px-3 text-sm font-medium hover:bg-slate-50"
-              >
-                <Users className="h-4 w-4" aria-hidden="true" />
-                Usuarios
-              </Link>
+              <>
+                <Link
+                  href="/admin/users"
+                  className="inline-flex h-9 items-center gap-2 rounded-md border bg-white px-3 text-sm font-medium hover:bg-slate-50"
+                >
+                  <Users className="h-4 w-4" aria-hidden="true" />
+                  Usuarios
+                </Link>
+                <Link
+                  href="/admin/budget-lines"
+                  className="inline-flex h-9 items-center gap-2 rounded-md border bg-white px-3 text-sm font-medium hover:bg-slate-50"
+                >
+                  Líneas base
+                </Link>
+              </>
             )}
             <div className="text-right">
               <p className="text-sm font-medium">{session.user.name || session.user.email}</p>
               <p className="text-xs text-muted-foreground">{session.user.role.replaceAll('_', ' ')}</p>
             </div>
+            <SignOutButton />
           </div>
         </div>
       </header>
@@ -178,8 +194,12 @@ export default async function HomePage() {
               <p className="text-sm font-medium text-muted-foreground">Presupuesto total</p>
               <CircleDollarSign className="h-5 w-5 text-emerald-600" aria-hidden="true" />
             </div>
-            <p className="mt-4 text-3xl font-bold">{currency.format(Number(budgetTotal._sum.totalBudget ?? 0))}</p>
-            <p className="mt-1 text-sm text-muted-foreground">Suma de los proyectos visibles</p>
+            <p className="mt-4 text-2xl font-bold">
+              {budgetTotals.length
+                ? budgetTotals.map(({ currency, _sum }) => formatCurrency(Number(_sum.totalBudget ?? 0), currency)).join(' · ')
+                : 'GTQ 0'}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">Totales por moneda de proyecto</p>
           </article>
         </section>
 
@@ -225,7 +245,9 @@ export default async function HomePage() {
                       </td>
                       <td className="px-6 py-4 text-muted-foreground">{typeLabels[project.type]}</td>
                       <td className="px-6 py-4 text-muted-foreground">{project.manager.name || 'Sin nombre'}</td>
-                      <td className="px-6 py-4 font-medium">{currency.format(Number(project.totalBudget))}</td>
+                      <td className="px-6 py-4 font-medium">
+                        {formatCurrency(Number(project.totalBudget), project.currency)}
+                      </td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusStyles[project.status]}`}>
                           {statusLabels[project.status]}

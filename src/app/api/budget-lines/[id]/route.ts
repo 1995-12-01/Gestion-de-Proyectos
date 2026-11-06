@@ -32,6 +32,22 @@ export async function PATCH(
 
     const body = await request.json()
     const data = budgetLineUpdateSchema.parse(body)
+    if (data.budgetedAmount !== undefined) {
+      const childAmounts = await prisma.budgetLine.aggregate({
+        where: budgetLine.parentId
+          ? { parentId: budgetLine.parentId, id: { not: budgetLine.id } }
+          : { parentId: budgetLine.id },
+        _sum: { budgetedAmount: true },
+      })
+      if (budgetLine.parentId) {
+        const parent = await prisma.budgetLine.findUnique({ where: { id: budgetLine.parentId } })
+        if (!parent || Number(childAmounts._sum.budgetedAmount ?? 0) + data.budgetedAmount > Number(parent.budgetedAmount)) {
+          return NextResponse.json({ error: 'La suma de los subrubros no puede superar el monto de la línea base.' }, { status: 400 })
+        }
+      } else if (Number(childAmounts._sum.budgetedAmount ?? 0) > data.budgetedAmount) {
+        return NextResponse.json({ error: 'El monto de la línea base no puede ser menor que la suma de sus subrubros.' }, { status: 400 })
+      }
+    }
 
     const updated = await prisma.budgetLine.update({
       where: { id },
@@ -98,7 +114,7 @@ export async function DELETE(
 }
 
 async function updateProjectBudgetTotals(projectId: string) {
-  const lines = await prisma.budgetLine.findMany({ where: { projectId } })
+  const lines = await prisma.budgetLine.findMany({ where: { projectId, parentId: null } })
   const total = lines.reduce((sum, l) => sum + Number(l.budgetedAmount), 0)
   const committed = lines.reduce((sum, l) => sum + Number(l.committedAmount), 0)
   const executed = lines.reduce((sum, l) => sum + Number(l.executedAmount), 0)

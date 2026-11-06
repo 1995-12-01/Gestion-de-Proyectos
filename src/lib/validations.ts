@@ -1,7 +1,8 @@
 import { z } from 'zod'
-import { ProjectType, ProjectStatus, BudgetItemType, PhaseStatus, DisbursementStatus, DeliverableStatus, ScheduleItemType, SupplierStatus, UserRole } from '@prisma/client'
+import { ProjectType, ProjectStatus, ProjectCurrency, BudgetItemType, PhaseStatus, DisbursementStatus, DeliverableStatus, ScheduleItemType, SupplierStatus, UserRole } from '@prisma/client'
 import type {
   BudgetItem as BudgetItemModel,
+  BudgetBaseLine as BudgetBaseLineModel,
   BudgetLine as BudgetLineModel,
   Deliverable as DeliverableModel,
   Project as ProjectModel,
@@ -35,7 +36,7 @@ export const userCreateSchema = z.object({
   name: z.string().trim().min(2, 'Nombre muy corto').max(100).optional(),
   password: z.string().min(8, 'Mínimo 8 caracteres'),
   role: z.nativeEnum(UserRole).default(UserRole.PROJECT_MANAGER),
-  phone: z.string().optional(),
+  phone: z.string().trim().max(30).optional(),
   department: z.string().optional(),
 })
 
@@ -61,6 +62,7 @@ export const projectCreateSchema = z.object({
   name: z.string().min(3, 'Mínimo 3 caracteres').max(200),
   description: z.string().optional(),
   type: z.nativeEnum(ProjectType),
+  currency: z.nativeEnum(ProjectCurrency).default(ProjectCurrency.GTQ),
 
   // Fechas
   startDate: z.coerce.date().optional(),
@@ -87,19 +89,23 @@ export const projectCreateSchema = z.object({
   coordinates: z.string().optional(),
 
   // Asignación
-  managerId: z.string().cuid(),
+  managerId: z.string().min(1),
+  baseBudgetLines: z.array(z.object({
+    baseLineId: z.string().cuid(),
+    budgetedAmount: z.coerce.number().nonnegative(),
+  })).default([]),
 })
 
 export const projectUpdateSchema = projectCreateSchema.partial().extend({
   status: z.nativeEnum(ProjectStatus).optional(),
   executedBudget: z.coerce.number().nonnegative().optional(),
   committedBudget: z.coerce.number().nonnegative().optional(),
-})
+}).omit({ baseBudgetLines: true })
 
 export const projectFilterSchema = paginationSchema.extend({
   type: z.nativeEnum(ProjectType).optional(),
   status: z.nativeEnum(ProjectStatus).optional(),
-  managerId: z.string().cuid().optional(),
+  managerId: z.string().min(1).optional(),
   fiscalYear: z.coerce.number().int().optional(),
   dateFrom: z.coerce.date().optional(),
   dateTo: z.coerce.date().optional(),
@@ -116,6 +122,7 @@ export type Project = ProjectModel
 
 export const budgetLineCreateSchema = z.object({
   projectId: z.string().cuid(),
+  baseLineId: z.string().cuid().optional(),
   name: z.string().min(2).max(200),
   description: z.string().optional(),
   type: z.nativeEnum(BudgetItemType),
@@ -127,7 +134,11 @@ export const budgetLineCreateSchema = z.object({
   order: z.coerce.number().int().default(0),
 })
 
-export const budgetLineUpdateSchema = budgetLineCreateSchema.partial().extend({
+export const budgetLineUpdateSchema = budgetLineCreateSchema.partial().omit({
+  projectId: true,
+  baseLineId: true,
+  parentId: true,
+}).extend({
   committedAmount: z.coerce.number().nonnegative().optional(),
   executedAmount: z.coerce.number().nonnegative().optional(),
   pendingAmount: z.coerce.number().nonnegative().optional(),
@@ -140,6 +151,7 @@ export type BudgetLine = BudgetLineModel & {
   children?: BudgetLine[]
   items?: BudgetItem[]
 }
+export type BudgetBaseLine = BudgetBaseLineModel
 
 // ============================================
 // ITEMS DE PRESUPUESTO (DETALLE)
@@ -177,7 +189,7 @@ export const phaseCreateSchema = z.object({
   startDate: z.coerce.date().optional(),
   endDate: z.coerce.date().optional(),
   authorizedAmount: z.coerce.number().nonnegative().optional(),
-  assigneeId: z.string().cuid().optional(),
+  assigneeId: z.string().min(1).optional(),
 })
 
 export const phaseUpdateSchema = phaseCreateSchema.partial().extend({
@@ -228,7 +240,8 @@ export const scheduleItemCreateSchema = z.object({
   plannedEnd: z.coerce.date(),
   plannedDuration: z.coerce.number().int().positive(),
   dependencies: z.array(z.string().cuid()).default([]),
-  assigneeId: z.string().cuid().optional(),
+  budgetLineId: z.string().cuid().optional(),
+  assigneeId: z.string().min(1).optional(),
   supplierId: z.string().cuid().optional(),
   estimatedCost: z.coerce.number().nonnegative().optional(),
   isMilestone: z.boolean().default(false),
@@ -236,7 +249,9 @@ export const scheduleItemCreateSchema = z.object({
   order: z.coerce.number().int().default(0),
 })
 
-export const scheduleItemUpdateSchema = scheduleItemCreateSchema.partial().extend({
+export const scheduleItemUpdateSchema = scheduleItemCreateSchema.partial().omit({
+  projectId: true,
+}).extend({
   actualStart: z.coerce.date().optional(),
   actualEnd: z.coerce.date().optional(),
   actualDuration: z.coerce.number().int().optional(),
@@ -260,8 +275,8 @@ export const deliverableCreateSchema = z.object({
   description: z.string().optional(),
   type: z.string(),
   dueDate: z.coerce.date(),
-  responsibleId: z.string().cuid().optional(),
-  reviewerId: z.string().cuid().optional(),
+  responsibleId: z.string().min(1).optional(),
+  reviewerId: z.string().min(1).optional(),
   files: z.array(z.string().url()).default([]),
 })
 
