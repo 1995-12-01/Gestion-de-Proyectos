@@ -3,7 +3,7 @@
 import { FormEvent, useState } from 'react'
 import Link from 'next/link'
 import { signIn } from 'next-auth/react'
-import { FolderKanban } from 'lucide-react'
+import { BrandLogo } from '@/components/brand-logo'
 
 export default function LoginPage() {
   const [error, setError] = useState('')
@@ -38,9 +38,7 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-50 px-6 py-12">
       <section className="w-full max-w-md rounded-2xl border bg-white p-8 shadow-sm">
-        <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-          <FolderKanban aria-hidden="true" />
-        </div>
+        <BrandLogo className="mb-6 h-10 w-auto" />
         <p className="text-sm font-semibold uppercase tracking-wide text-primary">Gestión de infraestructura</p>
         <h1 className="mt-2 text-2xl font-bold tracking-tight">Iniciar sesión</h1>
         <p className="mt-2 text-sm text-muted-foreground">Ingresa con las credenciales de tu cuenta.</p>

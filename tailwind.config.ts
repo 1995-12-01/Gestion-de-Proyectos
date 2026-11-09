@@ -17,6 +17,10 @@ const config: Config = {
     },
     extend: {
       colors: {
+        brand: {
+          navy: 'hsl(var(--brand-navy))',
+          green: 'hsl(var(--brand-green))',
+        },
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',

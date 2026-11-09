@@ -2,7 +2,8 @@
 
 import Link from 'next/link'
 import { FormEvent, useEffect, useState } from 'react'
-import { ArrowLeft, FolderKanban } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
+import { BrandLogo } from '@/components/brand-logo'
 
 export default function ResetPasswordPage() {
   const [accessToken, setAccessToken] = useState('')
@@ -61,9 +62,7 @@ export default function ResetPasswordPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-50 px-6 py-12">
       <section className="w-full max-w-md rounded-2xl border bg-white p-8 shadow-sm">
-        <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-          <FolderKanban aria-hidden="true" />
-        </div>
+        <BrandLogo className="mb-6 h-10 w-auto" />
         <p className="text-sm font-semibold uppercase tracking-wide text-primary">Gestión de infraestructura</p>
         <h1 className="mt-2 text-2xl font-bold tracking-tight">Elegir contraseña nueva</h1>
 

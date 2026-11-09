@@ -6,6 +6,7 @@ import { UserRole } from '@prisma/client'
 import { authOptions } from '@/lib/auth'
 import { CreateUserForm } from './user-form'
 import { SignOutButton } from '@/components/sign-out-button'
+import { BrandLogo } from '@/components/brand-logo'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,6 +23,7 @@ export default async function UsersPage() {
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             Volver al panel
           </Link>
+          <BrandLogo className="hidden h-10 w-auto sm:block" />
           <SignOutButton />
         </div>
 

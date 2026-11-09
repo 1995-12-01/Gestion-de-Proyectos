@@ -61,6 +61,7 @@ export default async function ProjectPage({ params }: { params: { id: string } }
         manager: project.manager,
         budgetLines: project.budgetLines.map(line => ({
           id: line.id,
+          baseLineId: line.baseLineId,
           code: line.code,
           name: line.name,
           description: line.description,

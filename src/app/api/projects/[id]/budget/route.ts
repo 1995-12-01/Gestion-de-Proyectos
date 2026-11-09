@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import prisma from '@/lib/prisma'
@@ -117,49 +118,89 @@ export async function POST(
     }
 
     const baseLine = data.baseLineId
-      ? await prisma.budgetBaseLine.findFirst({ where: { id: data.baseLineId, isActive: true } })
+      ? await prisma.budgetBaseLine.findFirst({
+          where: { id: data.baseLineId, isActive: true },
+          include: {
+            subrubrics: {
+              where: { isActive: true },
+              orderBy: [{ order: 'asc' }, { code: 'asc' }],
+            },
+          },
+        })
       : null
     if (data.baseLineId && !baseLine) {
       return NextResponse.json({ error: 'La línea base no existe o está inactiva.' }, { status: 400 })
     }
+    if (baseLine) {
+      const alreadyAssigned = await prisma.budgetLine.findFirst({
+        where: { projectId: id, baseLineId: baseLine.id },
+        select: { id: true },
+      })
+      if (alreadyAssigned) {
+        return NextResponse.json({ error: 'Esta línea base ya está asignada al proyecto.' }, { status: 409 })
+      }
+    }
 
     const siblingCount = await prisma.budgetLine.count({
-      where: { projectId: id, parentId: data.parentId },
+      where: { projectId: id, parentId: data.parentId ?? null },
     })
     const code = parent
       ? `${parent.code}.${(siblingCount + 1).toString().padStart(2, '0')}`
       : `RUB-${(siblingCount + 1).toString().padStart(3, '0')}`
 
-    const budgetLine = await prisma.budgetLine.create({
-      data: {
-        ...data,
-        name: baseLine?.name ?? data.name,
-        description: baseLine?.description ?? data.description,
-        type: parent?.type ?? baseLine?.type ?? data.type,
-        baseLineId: parent ? null : baseLine?.id,
-        code,
-        level: parent ? parent.level + 1 : 0,
-      },
-      include: { items: { include: { supplier: true } } },
+    const budgetLine = await prisma.$transaction(async tx => {
+      const created = await tx.budgetLine.create({
+        data: {
+          ...data,
+          name: baseLine?.name ?? data.name,
+          description: baseLine?.description ?? data.description,
+          type: parent?.type ?? baseLine?.type ?? data.type,
+          baseLineId: parent ? null : baseLine?.id,
+          code,
+          level: parent ? parent.level + 1 : 0,
+        },
+        include: { items: { include: { supplier: true } } },
+      })
+
+      if (baseLine) {
+        await tx.budgetLine.createMany({
+          data: baseLine.subrubrics.map((subrubric, index) => ({
+            projectId: id,
+            parentId: created.id,
+            code: `${created.code}.${String(index + 1).padStart(2, '0')}`,
+            name: subrubric.name,
+            description: subrubric.description,
+            type: baseLine.type,
+            budgetedAmount: 0,
+            order: index,
+            level: created.level + 1,
+          })),
+        })
+      }
+
+      await tx.activityLog.create({
+        data: {
+          projectId: id,
+          userId: session.user.id,
+          action: 'CREATE',
+          entity: 'BUDGET_LINE',
+          entityId: created.id,
+          newData: created,
+        },
+      })
+
+      return created
     })
 
     // Actualizar presupuesto total del proyecto
     await updateProjectBudgetTotals(id)
 
-    await prisma.activityLog.create({
-      data: {
-        projectId: id,
-        userId: session.user.id,
-        action: 'CREATE',
-        entity: 'BUDGET_LINE',
-        entityId: budgetLine.id,
-        newData: budgetLine,
-      },
-    })
-
     return NextResponse.json(budgetLine, { status: 201 })
   } catch (error) {
     console.error('Error creating budget line:', error)
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return NextResponse.json({ error: 'La línea base ya está asignada al proyecto.' }, { status: 409 })
+    }
     return NextResponse.json({ error: 'Error al crear rubro' }, { status: 500 })
   }
 }

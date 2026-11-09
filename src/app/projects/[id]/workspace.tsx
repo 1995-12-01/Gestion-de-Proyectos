@@ -8,9 +8,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { SignOutButton } from '@/components/sign-out-button'
+import { BrandLogo } from '@/components/brand-logo'
 
 type Subrubric = { id: string; code: string; name: string; description: string | null; type: string; budgetedAmount: number }
-type BaseLine = Subrubric & { children: Subrubric[] }
+type BaseLine = Subrubric & { baseLineId: string | null; children: Subrubric[] }
+type BaseLineOption = { id: string; code: string; name: string; type: string; isActive: boolean }
 type ScheduleRow = {
   id: string
   code: string
@@ -47,23 +49,63 @@ export function ProjectWorkspace({ project: initialProject, canManage }: { proje
   const [project, setProject] = useState(initialProject)
   const [activeTab, setActiveTab] = useState<'budget' | 'schedule'>('budget')
   const [responsibles, setResponsibles] = useState<Responsible[]>([])
+  const [baseLineOptions, setBaseLineOptions] = useState<BaseLineOption[]>([])
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
     if (!canManage) return
     let active = true
-    fetch('/api/users')
-      .then(async response => {
-        const result = await response.json()
-        if (!response.ok) throw new Error(result.error || 'No se pudieron cargar los responsables.')
-        if (active) setResponsibles(result.users)
+    Promise.all([fetch('/api/users'), fetch('/api/budget-base-lines')])
+      .then(async ([usersResponse, linesResponse]) => {
+        const [usersResult, linesResult] = await Promise.all([usersResponse.json(), linesResponse.json()])
+        if (!usersResponse.ok) throw new Error(usersResult.error || 'No se pudieron cargar los responsables.')
+        if (!linesResponse.ok) throw new Error(linesResult.error || 'No se pudo cargar el catálogo de líneas base.')
+        if (active) {
+          setResponsibles(usersResult.users)
+          setBaseLineOptions(linesResult.budgetBaseLines)
+        }
       })
       .catch(loadError => {
         if (active) setError(loadError instanceof Error ? loadError.message : 'No se pudieron cargar los responsables.')
       })
     return () => { active = false }
   }, [])
+
+  async function assignBaseLine(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError('')
+    setIsSubmitting(true)
+    const form = event.currentTarget
+    const formData = new FormData(form)
+    const baseLine = baseLineOptions.find(line => line.id === formData.get('baseLineId'))
+    if (!baseLine) {
+      setError('Selecciona una línea base activa.')
+      setIsSubmitting(false)
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/projects/${project.id}/budget`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          baseLineId: baseLine.id,
+          name: baseLine.name,
+          type: baseLine.type,
+          budgetedAmount: formData.get('budgetedAmount') || 0,
+        }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'No se pudo asignar la línea base.')
+      form.reset()
+      await refreshProject()
+    } catch (assignError) {
+      setError(assignError instanceof Error ? assignError.message : 'No se pudo asignar la línea base.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   async function refreshProject() {
     const [budgetResponse, scheduleResponse] = await Promise.all([
@@ -180,6 +222,10 @@ export function ProjectWorkspace({ project: initialProject, canManage }: { proje
     ...child,
     baseLineName: line.name,
   })))
+  const assignedBaseLineIds = new Set(
+    project.budgetLines.map(line => line.baseLineId).filter((id): id is string => Boolean(id))
+  )
+  const availableBaseLines = baseLineOptions.filter(line => line.isActive && !assignedBaseLineIds.has(line.id))
 
   return (
     <main className="min-h-screen bg-slate-50 px-6 py-10">
@@ -189,6 +235,7 @@ export function ProjectWorkspace({ project: initialProject, canManage }: { proje
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             Proyectos
           </Link>
+          <BrandLogo className="hidden h-10 w-auto sm:block" />
           <SignOutButton />
         </div>
         <header className="mt-6 rounded-xl border bg-white p-6 shadow-sm">
@@ -229,6 +276,51 @@ export function ProjectWorkspace({ project: initialProject, canManage }: { proje
 
         {activeTab === 'budget' ? (
           <section className="mt-5 space-y-4">
+            {canManage && (
+              <form
+                className="grid gap-3 rounded-xl border bg-white p-5 shadow-sm sm:grid-cols-[1fr_180px_auto]"
+                onSubmit={event => void assignBaseLine(event)}
+              >
+                <div className="space-y-2">
+                  <Label htmlFor="assign-base-line">Agregar línea base</Label>
+                  <select
+                    id="assign-base-line"
+                    name="baseLineId"
+                    required
+                    disabled={!availableBaseLines.length}
+                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                  >
+                    <option value="">Selecciona una línea presupuestaria</option>
+                    {availableBaseLines.map(line => (
+                      <option key={line.id} value={line.id}>{line.code} · {line.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="assign-base-amount">Monto ({project.currency})</Label>
+                  <Input
+                    id="assign-base-amount"
+                    name="budgetedAmount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    defaultValue="0"
+                    required
+                    disabled={!availableBaseLines.length}
+                  />
+                </div>
+                <div className="flex items-end">
+                  <Button type="submit" loading={isSubmitting} disabled={!availableBaseLines.length}>
+                    <Plus className="mr-1 h-4 w-4" aria-hidden="true" /> Asignar línea
+                  </Button>
+                </div>
+                {!availableBaseLines.length && (
+                  <p className="text-sm text-muted-foreground sm:col-span-3">
+                    No hay más líneas base activas disponibles para asignar.
+                  </p>
+                )}
+              </form>
+            )}
             {project.budgetLines.map(line => (
               <article key={line.id} className="overflow-hidden rounded-xl border bg-white shadow-sm">
                 <div className="flex flex-col justify-between gap-3 border-b p-5 sm:flex-row sm:items-center">

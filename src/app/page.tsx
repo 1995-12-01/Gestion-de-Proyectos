@@ -5,6 +5,7 @@ import { ArrowRight, Briefcase, CircleDollarSign, FolderKanban, Plus, Users } fr
 import { authOptions } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { SignOutButton } from '@/components/sign-out-button'
+import { BrandLogo } from '@/components/brand-logo'
 
 export const dynamic = 'force-dynamic'
 
@@ -117,9 +118,7 @@ export default async function HomePage() {
       <header className="border-b bg-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <FolderKanban className="h-5 w-5" aria-hidden="true" />
-            </div>
+            <BrandLogo className="h-10 w-auto shrink-0" />
             <div>
               <p className="font-semibold">Gestión de Proyectos</p>
               <p className="text-xs text-muted-foreground">Infraestructura</p>

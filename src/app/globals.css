@@ -4,25 +4,27 @@
 
 @layer base {
   :root {
+    --brand-navy: 220 53% 24%;
+    --brand-green: 149 100% 29%;
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221 83% 53%;
+    --primary: var(--brand-navy);
     --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 220 30% 95%;
+    --secondary-foreground: var(--brand-navy);
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 145 45% 94%;
+    --accent-foreground: var(--brand-green);
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 221 83% 53%;
+    --ring: var(--brand-navy);
     --radius: 0.5rem;
 
     /* Colores específicos del dominio */
@@ -66,6 +68,7 @@
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
+    border-top: 3px solid hsl(var(--brand-green));
   }
 }
 

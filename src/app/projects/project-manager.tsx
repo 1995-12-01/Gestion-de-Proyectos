@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { SignOutButton } from '@/components/sign-out-button'
+import { BrandLogo } from '@/components/brand-logo'
 
 type ProjectRow = {
   id: string
@@ -127,6 +128,7 @@ export function ProjectManager({ canCreate }: { canCreate: boolean }) {
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             Panel principal
           </Link>
+          <BrandLogo className="hidden h-10 w-auto sm:block" />
           <SignOutButton />
         </div>
         <div className="mt-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
