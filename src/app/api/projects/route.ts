@@ -108,21 +108,31 @@ export async function POST(request: NextRequest) {
     }
 
     const year = new Date().getFullYear()
-    const [count, baseLines] = await Promise.all([
-      prisma.project.count({
-        where: { type: data.type, createdAt: { gte: new Date(year, 0, 1), lt: new Date(year + 1, 0, 1) } },
+    const prefix = data.type === 'AUTHORIZED_PLAN' ? `PAE-${year}-` : `PRM-${year}-`
+    const [existingCodes, baseLines] = await Promise.all([
+      prisma.project.findMany({
+        where: { code: { startsWith: prefix } },
+        select: { code: true },
       }),
       prisma.budgetBaseLine.findMany({
         where: { id: { in: baseBudgetLines.map(line => line.baseLineId) }, isActive: true },
+        include: {
+          subrubrics: {
+            where: { isActive: true },
+            orderBy: [{ order: 'asc' }, { code: 'asc' }],
+          },
+        },
       }),
     ])
     if (baseLines.length !== new Set(baseBudgetLines.map(line => line.baseLineId)).size) {
       return NextResponse.json({ error: 'Una o más líneas base ya no están activas o no existen.' }, { status: 400 })
     }
 
-    const code = data.type === 'AUTHORIZED_PLAN'
-      ? `PAE-${year}-${(count + 1).toString().padStart(4, '0')}`
-      : `PRM-${year}-${(count + 1).toString().padStart(4, '0')}`
+    const lastSequence = existingCodes.reduce((max, project) => {
+      const match = new RegExp(`^${prefix}(\\d+)$`).exec(project.code)
+      return match ? Math.max(max, Number(match[1])) : max
+    }, 0)
+    const code = `${prefix}${(lastSequence + 1).toString().padStart(4, '0')}`
     const totalBudget = baseBudgetLines.reduce((sum, line) => sum + line.budgetedAmount, 0)
 
     const project = await prisma.$transaction(async tx => {
@@ -140,7 +150,7 @@ export async function POST(request: NextRequest) {
       for (let index = 0; index < baseBudgetLines.length; index += 1) {
         const allocation = baseBudgetLines[index]
         const baseLine = baseLines.find(line => line.id === allocation.baseLineId)!
-        await tx.budgetLine.create({
+        const createdLine = await tx.budgetLine.create({
           data: {
             projectId: created.id,
             baseLineId: baseLine.id,
@@ -152,6 +162,22 @@ export async function POST(request: NextRequest) {
             order: index,
           },
         })
+
+        for (let subrubricIndex = 0; subrubricIndex < baseLine.subrubrics.length; subrubricIndex += 1) {
+          const subrubric = baseLine.subrubrics[subrubricIndex]
+          await tx.budgetLine.create({
+            data: {
+              projectId: created.id,
+              parentId: createdLine.id,
+              code: `${createdLine.code}.${String(subrubricIndex + 1).padStart(2, '0')}`,
+              name: subrubric.name,
+              description: subrubric.description,
+              type: baseLine.type,
+              budgetedAmount: 0,
+              order: subrubricIndex,
+            },
+          })
+        }
       }
 
       await tx.activityLog.create({

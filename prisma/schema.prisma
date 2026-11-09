@@ -262,9 +262,28 @@ model BudgetBaseLine {
   updatedAt   DateTime       @updatedAt
 
   budgetLines BudgetLine[]
+  subrubrics  BudgetBaseSubrubric[]
 
   @@index([isActive, order])
   @@map("budget_base_lines")
+}
+
+model BudgetBaseSubrubric {
+  id          String   @id @default(cuid())
+  baseLineId  String
+  code        String
+  name        String
+  description String?
+  order       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  baseLine BudgetBaseLine @relation(fields: [baseLineId], references: [id], onDelete: Cascade)
+
+  @@unique([baseLineId, code])
+  @@index([baseLineId, isActive, order])
+  @@map("budget_base_subrubrics")
 }
 
 model BudgetItem {

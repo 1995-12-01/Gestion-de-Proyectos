@@ -6,6 +6,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
+type BaseSubrubric = {
+  id: string
+  code: string
+  name: string
+  description: string | null
+  isActive: boolean
+}
+
 type BaseLine = {
   id: string
   code: string
@@ -14,6 +22,7 @@ type BaseLine = {
   type: BudgetItemType
   order: number
   isActive: boolean
+  subrubrics: BaseSubrubric[]
 }
 
 const types: { value: BudgetItemType; label: string }[] = [
@@ -32,6 +41,7 @@ export function BudgetBaseLineManager() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingSubrubricId, setEditingSubrubricId] = useState<string | null>(null)
 
   async function loadLines() {
     setError('')
@@ -122,6 +132,73 @@ export function BudgetBaseLineManager() {
     }
   }
 
+  async function createSubrubric(event: FormEvent<HTMLFormElement>, line: BaseLine) {
+    event.preventDefault()
+    setError('')
+    setIsSubmitting(true)
+    const form = event.currentTarget
+    const values = new FormData(form)
+    try {
+      const response = await fetch(`/api/budget-base-lines/${line.id}/subrubrics`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: values.get('name'),
+          description: values.get('description') || undefined,
+        }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'No se pudo crear el subrubro.')
+      form.reset()
+      await loadLines()
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : 'No se pudo crear el subrubro.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  async function updateSubrubric(event: FormEvent<HTMLFormElement>, line: BaseLine, subrubric: BaseSubrubric) {
+    event.preventDefault()
+    setError('')
+    setIsSubmitting(true)
+    const values = new FormData(event.currentTarget)
+    try {
+      const response = await fetch(`/api/budget-base-lines/${line.id}/subrubrics/${subrubric.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: values.get('name'),
+          description: values.get('description') || undefined,
+        }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'No se pudo actualizar el subrubro.')
+      setEditingSubrubricId(null)
+      await loadLines()
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : 'No se pudo actualizar el subrubro.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  async function toggleSubrubric(line: BaseLine, subrubric: BaseSubrubric) {
+    setError('')
+    try {
+      const response = await fetch(`/api/budget-base-lines/${line.id}/subrubrics/${subrubric.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: !subrubric.isActive }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'No se pudo actualizar el subrubro.')
+      await loadLines()
+    } catch (toggleError) {
+      setError(toggleError instanceof Error ? toggleError.message : 'No se pudo actualizar el subrubro.')
+    }
+  }
+
   return (
     <div className="mt-7 space-y-8">
       <form className="grid gap-4 rounded-lg border p-4 sm:grid-cols-2" onSubmit={handleSubmit}>
@@ -208,6 +285,61 @@ export function BudgetBaseLineManager() {
                       </td>
                     </tr>
                   )}
+                  <tr>
+                    <td colSpan={5} className="bg-slate-50/70 px-4 py-4">
+                      <div className="space-y-3">
+                        <div>
+                          <h3 className="text-sm font-semibold">Subrubros predeterminados</h3>
+                          <p className="text-xs text-muted-foreground">
+                            Se copiarán a los proyectos nuevos que usen esta línea base.
+                          </p>
+                        </div>
+                        {line.subrubrics.length > 0 && (
+                          <div className="divide-y rounded-md border bg-white">
+                            {line.subrubrics.map(subrubric => (
+                              <div key={subrubric.id} className="flex flex-col justify-between gap-3 p-3 sm:flex-row sm:items-center">
+                                {editingSubrubricId === subrubric.id ? (
+                                  <form
+                                    className="grid flex-1 gap-3 sm:grid-cols-2"
+                                    onSubmit={event => void updateSubrubric(event, line, subrubric)}
+                                  >
+                                    <Input name="name" defaultValue={subrubric.name} minLength={2} maxLength={200} required aria-label="Nombre del subrubro" />
+                                    <Input name="description" defaultValue={subrubric.description ?? ''} maxLength={1000} aria-label="Descripción del subrubro" />
+                                    <div className="flex gap-2 sm:col-span-2">
+                                      <Button type="submit" size="sm" loading={isSubmitting}>Guardar</Button>
+                                      <Button type="button" size="sm" variant="outline" onClick={() => setEditingSubrubricId(null)}>Cancelar</Button>
+                                    </div>
+                                  </form>
+                                ) : (
+                                  <>
+                                    <div>
+                                      <p className="text-sm font-medium">{subrubric.code} · {subrubric.name}</p>
+                                      {subrubric.description && <p className="text-xs text-muted-foreground">{subrubric.description}</p>}
+                                      <p className="text-xs text-muted-foreground">{subrubric.isActive ? 'Activo' : 'Inactivo'}</p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <Button type="button" variant="outline" size="sm" onClick={() => setEditingSubrubricId(subrubric.id)}>Editar</Button>
+                                      <Button type="button" variant="outline" size="sm" onClick={() => void toggleSubrubric(line, subrubric)}>
+                                        {subrubric.isActive ? 'Desactivar' : 'Activar'}
+                                      </Button>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <form
+                          className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]"
+                          onSubmit={event => void createSubrubric(event, line)}
+                        >
+                          <Input name="name" minLength={2} maxLength={200} required placeholder="Nombre del subrubro" aria-label="Nuevo subrubro" />
+                          <Input name="description" maxLength={1000} placeholder="Descripción (opcional)" aria-label="Descripción del nuevo subrubro" />
+                          <Button type="submit" size="sm" loading={isSubmitting}>Agregar subrubro</Button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
                 </Fragment>
               ))}
               {lines.length === 0 && (

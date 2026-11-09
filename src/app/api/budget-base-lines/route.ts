@@ -22,6 +22,12 @@ export async function GET() {
   const budgetBaseLines = await prisma.budgetBaseLine.findMany({
     where: session.user.role === UserRole.ADMIN ? {} : { isActive: true },
     orderBy: [{ order: 'asc' }, { code: 'asc' }],
+    include: {
+      subrubrics: {
+        where: session.user.role === UserRole.ADMIN ? {} : { isActive: true },
+        orderBy: [{ order: 'asc' }, { code: 'asc' }],
+      },
+    },
   })
 
   return NextResponse.json({ budgetBaseLines })

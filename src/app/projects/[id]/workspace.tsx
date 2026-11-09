@@ -7,6 +7,7 @@ import { ProjectCurrency } from '@prisma/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { SignOutButton } from '@/components/sign-out-button'
 
 type Subrubric = { id: string; code: string; name: string; description: string | null; type: string; budgetedAmount: number }
 type BaseLine = Subrubric & { children: Subrubric[] }
@@ -183,10 +184,13 @@ export function ProjectWorkspace({ project: initialProject, canManage }: { proje
   return (
     <main className="min-h-screen bg-slate-50 px-6 py-10">
       <div className="mx-auto max-w-7xl">
-        <Link href="/projects" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-          Proyectos
-        </Link>
+        <div className="flex items-center justify-between gap-4">
+          <Link href="/projects" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            Proyectos
+          </Link>
+          <SignOutButton />
+        </div>
         <header className="mt-6 rounded-xl border bg-white p-6 shadow-sm">
           <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-start">
             <div className="flex items-start gap-4">

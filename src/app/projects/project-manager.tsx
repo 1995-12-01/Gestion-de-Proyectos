@@ -7,6 +7,7 @@ import { ProjectCurrency, ProjectStatus, ProjectType } from '@prisma/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { SignOutButton } from '@/components/sign-out-button'
 
 type ProjectRow = {
   id: string
@@ -20,7 +21,13 @@ type ProjectRow = {
   manager: { id: string; name: string | null; email: string }
 }
 
-type BaseLine = { id: string; code: string; name: string; type: string }
+type BaseLine = {
+  id: string
+  code: string
+  name: string
+  type: string
+  subrubrics: { id: string; name: string }[]
+}
 
 const typeLabels: Record<ProjectType, string> = {
   AUTHORIZED_PLAN: 'Plan autorizado',
@@ -115,10 +122,13 @@ export function ProjectManager({ canCreate }: { canCreate: boolean }) {
   return (
     <main className="min-h-screen bg-slate-50 px-6 py-10">
       <div className="mx-auto max-w-7xl">
-        <Link href="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-          Panel principal
-        </Link>
+        <div className="flex items-center justify-between gap-4">
+          <Link href="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            Panel principal
+          </Link>
+          <SignOutButton />
+        </div>
         <div className="mt-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
             <p className="text-sm font-medium text-primary">Gestión de proyectos</p>
@@ -183,6 +193,7 @@ export function ProjectManager({ canCreate }: { canCreate: boolean }) {
             <div>
               <h2 className="font-semibold">Líneas presupuestarias base</h2>
               <p className="mt-1 text-sm text-muted-foreground">Selecciona las líneas y asigna un monto en la moneda del proyecto.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Los subrubros activos del catálogo se copiarán automáticamente al proyecto.</p>
               {baseLines.length ? (
                 <div className="mt-3 divide-y rounded-lg border">
                   {baseLines.map(line => (
@@ -190,6 +201,9 @@ export function ProjectManager({ canCreate }: { canCreate: boolean }) {
                       <span>
                         <span className="font-medium">{line.name}</span>
                         <span className="ml-2 text-xs text-muted-foreground">{line.code}</span>
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          {line.subrubrics.length} subrubro{line.subrubrics.length === 1 ? '' : 's'}
+                        </span>
                       </span>
                       <Input
                         type="number"
